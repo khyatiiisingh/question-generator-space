@@ -1,74 +1,59 @@
 import streamlit as st
-from langchain.llms import OpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.prompts import PromptTemplate
+from dotenv import load_dotenv
 import os
 
-# Load your OpenAI key from environment variables (you can set it in Huggingface secrets)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# Load API key from .env
+load_dotenv()
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# Initialize LLM
-llm = OpenAI(temperature=0.5, openai_api_key=OPENAI_API_KEY)
+# Load Gemini LLM
+llm = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=GOOGLE_API_KEY)
 
-# Load Transcript
-def load_transcript(file_path):
-    with open(file_path, "r", encoding="utf-8") as f:
-        return f.read()
+# Streamlit UI
+st.set_page_config(page_title="LMS Question Generator", layout="wide")
+st.title("🎓 LMS Question Generator using Bloom's Taxonomy")
 
-# Load Course Outcomes
-def load_course_outcomes(file_path):
-    with open(file_path, "r", encoding="utf-8") as f:
-        return f.read()
+# Upload section
+transcript_file = st.file_uploader("📄 Upload Course Transcript (.txt)", type=["txt"])
+course_outcomes = st.text_area("📘 Enter Course Outcomes (COs)")
 
-# Generate Questions
-def generate_questions(transcript, course_outcomes, bloom_level, question_type):
-    prompt = f"""
-You are a Course Content Expert.
+if transcript_file:
+    transcript = transcript_file.read().decode("utf-8")
+else:
+    transcript = ""
 
-You have:
-- Course Content: {transcript}
-- Course Outcomes: {course_outcomes}
+# Prompt template
+template = """
+You are an expert question generator for a university LMS system.
 
-Task:
-- Generate 5 {question_type} questions.
-- Follow Bloom's Taxonomy level: {bloom_level}.
-- Align questions properly with the given Course Outcomes.
-- Present questions clearly and separate each by new line.
+Based on the provided course transcript and course outcomes (COs), generate:
 
-Important:
-- If {question_type} is Objective, generate MCQ type questions with 4 options (a-d) and mention correct answer.
-- If {question_type} is Short Answer, keep questions concise and direct.
+1. 🔹 3 Objective Questions (MCQs or Fill in the blanks)
+2. 🔹 3 Short Answer Questions
 
-Start Generating:
+Each question should:
+- Clearly mention the corresponding Course Outcome (e.g., CO1, CO2, etc.)
+- Specify its Bloom's Taxonomy Level (e.g., Remember, Understand, Apply, Analyze, Evaluate, Create)
+
+### Course Outcomes:
+{course_outcomes}
+
+### Course Transcript:
+{transcript}
+
+Now generate the questions.
 """
-    response = llm.invoke(prompt)
-    return response
 
-# Streamlit App
-def main():
-    st.set_page_config(page_title="LMS Question Generator", page_icon="📚")
-    st.title("📚 LMS Agent: Question Generator")
-    st.write("Generate Course Outcome Based Questions Following Bloom's Taxonomy!")
+prompt = PromptTemplate.from_template(template)
 
-    transcript = load_transcript("cleaned_transcript.txt")
-    course_outcomes = load_course_outcomes("course_outcomes.txt")
-
-    # Select Bloom's Level
-    bloom_levels = ["Remembering", "Understanding", "Applying", "Analyzing", "Evaluating", "Creating"]
-    selected_level = st.selectbox("Select Bloom's Taxonomy Level:", bloom_levels)
-
-    # Select Question Type
-    question_types = ["Objective (MCQ)", "Short Answer"]
-    selected_qtype = st.selectbox("Select Question Type:", question_types)
-
-    if st.button("🚀 Generate Questions"):
-        with st.spinner("Generating Questions..."):
-            questions = generate_questions(
-                transcript,
-                course_outcomes,
-                bloom_level=selected_level,
-                question_type=selected_qtype
-            )
-            st.success("Questions Generated Successfully!")
-            st.write(questions)
-
-if __name__ == "__main__":
-    main()
+if st.button("🚀 Generate Questions"):
+    if transcript and course_outcomes:
+        with st.spinner("Generating questions..."):
+            full_prompt = prompt.format(course_outcomes=course_outcomes, transcript=transcript)
+            response = llm.invoke(full_prompt)
+            st.markdown("### Generated Questions:")
+            st.markdown(response.content)
+    else:
+        st.warning("Please upload a transcript and enter course outcomes.")
