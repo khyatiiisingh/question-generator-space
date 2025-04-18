@@ -45,7 +45,7 @@ def main():
 
     # Load Transcript and Course Outcomes
     transcript = load_file("cleaned_transcript.txt")
-    course_outcomes = load_file("course_outcome.txt")
+    course_outcomes = load_file("course_outcomes.txt")
 
     if st.button("Generate Questions"):
         all_questions = ""
