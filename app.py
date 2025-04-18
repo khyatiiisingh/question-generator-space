@@ -1,98 +1,75 @@
-import time
+import os
+import streamlit as st
 import google.generativeai as genai
-from google.api_core.exceptions import ResourceExhausted
 
-# Configure Gemini API Key
-genai.configure(api_key="YOUR_GEMINI_API_KEY")
+# Load Gemini API Key from Hugging Face Secret Variables
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+genai.configure(api_key=GOOGLE_API_KEY)
 
-# Load the Gemini model
-model = genai.GenerativeModel("gemini-1.5-pro")
+# Function to load text file content
+def load_file_from_streamlit(uploaded_file):
+    return uploaded_file.read().decode("utf-8")
 
-# Function to create a prompt
-def create_prompt(transcript, course_outcomes, bloom_level):
-    return f"""You are a smart question-generating agent.
-Based on the given course outcomes and Bloom's Taxonomy cognitive level, generate 5 questions related to the provided transcript content.
+# Function to generate questions
+def generate_questions(content, co_text, bloom_level):
+    prompt = f"""
+You are a Question Generator Agent.
 
-Transcript:
-\"\"\"
-{transcript}
-\"\"\"
+Given the following:
+- Course Content: {content}
+- Course Outcome: {co_text}
+- Bloom's Taxonomy Level: {bloom_level}
 
-Course Outcomes:
-{course_outcomes}
-
-Bloom's Level:
-{bloom_level}
-
-Guidelines:
-- The questions should strictly match the Bloom's level cognitive action.
-- The questions must be relevant to the transcript content.
-- Prefer clear, focused, and diverse question styles.
+Generate:
+- 2 Objective Type Questions
+- 2 Short Answer Type Questions
+that map to the given Course Outcome and Bloom's Taxonomy level.
 
 Format:
-1. [Question 1]
-2. [Question 2]
-...
+Objective Questions:
+1. ...
+2. ...
+
+Short Answer Questions:
+1. ...
+2. ...
 """
+    model = genai.GenerativeModel('gemini-1.5-pro')  # Correct model
+    response = model.generate_content(prompt)
+    return response.text
 
-# Retry wrapper
-def generate_questions(transcript, course_outcomes, bloom_level, retries=3, delay=20):
-    prompt = create_prompt(transcript, course_outcomes, bloom_level)
-
-    for attempt in range(retries):
-        try:
-            response = model.generate_content(prompt)
-            return response.text
-        except ResourceExhausted:
-            print(f"[!] Quota exceeded. Attempt {attempt+1} of {retries}. Waiting {delay} seconds...")
-            time.sleep(delay)
-        except Exception as e:
-            print(f"[!] Unexpected error: {e}")
-            break
-
-    return "[x] Failed to generate questions after retries."
-
-# Main function
+# Streamlit UI
 def main():
-    # Load transcript
-    with open("cleaned_transcript.txt", "r") as f:
-        transcript = f.read()
+    st.title("🌟 Course Outcome + Bloom's Taxonomy Question Generator")
 
-    # Your 5 course outcomes
-    course_outcomes = """
-    1. Understand the Fundamental Properties of Concrete and Its Components.
-    2. Describe the Manufacturing Process and Environmental Impact of Cement.
-    3. Analyze the Chemical Composition and Hydration Reactions of Cement Compounds.
-    4. Interpret the Microstructure and Physical Changes During Concrete Setting and Hardening.
-    5. Evaluate the Properties and Classification of Modern Engineered Concrete.
-    """
+    # Upload files
+    uploaded_transcript = st.file_uploader("📄 Upload the Course Transcript (.txt)", type=["txt"])
+    uploaded_course_outcome = st.file_uploader("📄 Upload the Course Outcomes (.txt)", type=["txt"])
 
-    # All Bloom's Taxonomy levels
-    blooms_levels = [
-        "Remember",
-        "Understand",
-        "Apply",
-        "Analyze",
-        "Evaluate",
-        "Create"
-    ]
+    if uploaded_transcript and uploaded_course_outcome:
+        transcript = load_file_from_streamlit(uploaded_transcript)
+        course_outcomes = load_file_from_streamlit(uploaded_course_outcome)
 
-    all_questions = {}
+        if st.button("🚀 Generate Questions"):
+            all_questions = ""
+            co_list = course_outcomes.strip().split("\n")  # List of each CO
+            bloom_levels = ["Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"]
 
-    for bloom_level in blooms_levels:
-        print(f"\n=== Generating Questions for Bloom's Level: {bloom_level} ===")
-        questions = generate_questions(transcript, course_outcomes, bloom_level)
-        all_questions[bloom_level] = questions
-        print(questions)
-        time.sleep(5)  # slight wait to respect rate limits better
+            for co in co_list:
+                st.subheader(f"📚 {co}")
+                all_questions += f"\n\n## {co}\n\n"
+                for bloom in bloom_levels:
+                    st.markdown(f"### 🌟 Bloom Level: {bloom}")
+                    with st.spinner(f"Generating questions for {co} at {bloom} level..."):
+                        questions = generate_questions(transcript, co, bloom)
+                        st.write(questions)
+                        all_questions += f"\n\n### {bloom}\n{questions}\n"
 
-    # Save to file
-    with open("generated_questions.txt", "w") as f:
-        for bloom_level, questions in all_questions.items():
-            f.write(f"\n=== {bloom_level} ===\n")
-            f.write(questions + "\n")
+            # Download all generated questions
+            st.download_button("📥 Download All Questions", all_questions, file_name="generated_questions.txt")
 
-    print("\n✅ All questions saved to 'generated_questions.txt'.")
+    else:
+        st.warning("⚠️ Please upload both the Course Transcript and Course Outcomes files!")
 
 if __name__ == "__main__":
     main()
