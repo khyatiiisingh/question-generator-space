@@ -1,0 +1,17 @@
+Course Outcomes:
+
+1.Understand the Fundamental Properties of Concrete and Its Components:
+Learners will be able to explain the composition of concrete, the role of aggregates, cement, water, and admixtures, and identify concrete as a multi-scale composite material.
+
+2.Describe the Manufacturing Process and Environmental Impact of Cement:
+Learners will be able to outline the dry process of cement production, recognize clinker formation stages, and discuss the environmental implications like CO₂ emissions associated with cement production.
+
+3.Analyze the Chemical Composition and Hydration Reactions of Cement Compounds:
+Learners will be able to describe key cement compounds (C₃S, C₂S, C₃A, C₄AF), their hydration processes, and the significance of heat evolution and product formation during cement hydration.
+
+4.Interpret the Microstructure and Physical Changes During Concrete Setting and Hardening:
+Learners will be able to explain the microstructural changes from plasticity to setting and hardening, understanding the formation of inner and outer products, and the role of hydration products like CSH gel and calcium hydroxide.
+
+5.Evaluate the Properties and Classification of Modern Engineered Concrete:
+Learners will be able to categorize different types of concrete (e.g., high-performance concrete, fiber-reinforced concrete, polymer concrete) based on materials used and desired performance characteristics.
+
