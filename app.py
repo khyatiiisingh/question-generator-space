@@ -1,5 +1,5 @@
 import streamlit as st
-from langchain_google_genai import ChatGoogleGenerativeAI
+import google.generativeai as genai
 from dotenv import load_dotenv
 import os
 
@@ -7,10 +7,10 @@ import os
 load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# Initialize Gemini LLM
-llm = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=GOOGLE_API_KEY)
+# Configure Gemini API
+genai.configure(api_key=GOOGLE_API_KEY)
 
-# Pre-uploaded cleaned transcript
+# Load cleaned transcript
 with open("cleaned_transcript.txt", "r", encoding="utf-8") as file:
     transcript = file.read()
 
@@ -27,32 +27,37 @@ blooms_levels = [
     "Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"
 ]
 
-# Streamlit UI
+# Streamlit App
 st.set_page_config(page_title="LMS Question Generator", layout="wide")
-st.title("🎯 LMS Question Generator (Auto-mapped with COs & Bloom's Taxonomy)")
+st.title("🎯 LMS Question Generator (CO + Bloom's Taxonomy)")
 
 if st.button("🚀 Generate Questions"):
     with st.spinner("Generating questions... please wait..."):
+        model = genai.GenerativeModel('gemini-pro')  # using correct Gemini model
+        
         for co_key, co_description in course_outcomes.items():
             st.header(f"📘 Course Outcome: {co_key} - {co_description}")
             
             for bloom_level in blooms_levels:
                 prompt = f"""
-You are an expert question generator for a university LMS system.
+You are a professional exam question designer.
 
-Given the following:
+Given:
 
 - **Course Outcome**: {co_key} - {co_description}
 - **Bloom's Taxonomy Level**: {bloom_level}
 - **Course Content**: {transcript}
 
-Generate:
+Please generate:
 1. 🔹 2 Objective Type Questions (MCQ or Fill in the blanks)
 2. 🔹 2 Short Answer Type Questions
 
-Ensure each question is aligned with the specified Course Outcome and Bloom's level.
-Show output in a clean numbered list.
+Ensure that questions align strictly with the given Course Outcome and Bloom's level.
+Show the output in clean numbered format.
 """
-                response = llm.invoke(prompt)
+
+                response = model.generate_content(prompt)
+                generated_text = response.text
+
                 st.subheader(f"🧠 Bloom's Level: {bloom_level}")
-                st.markdown(response.content)
+                st.markdown(generated_text)
