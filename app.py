@@ -1,63 +1,69 @@
+import os
 import streamlit as st
 import google.generativeai as genai
-from dotenv import load_dotenv
-import os
 
-# Load environment variables
-load_dotenv()
+# Load Gemini API Key from Hugging Face Environment
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-
-# Configure Gemini API
 genai.configure(api_key=GOOGLE_API_KEY)
 
-# Load cleaned transcript
-with open("cleaned_transcript.txt", "r", encoding="utf-8") as file:
-    transcript = file.read()
+# Function to load text files
+def load_file(file_path):
+    with open(file_path, "r", encoding="utf-8") as file:
+        return file.read()
 
-# Predefined Course Outcomes
-course_outcomes = {
-    "CO1": "Understand the properties of fresh and hardened concrete.",
-    "CO2": "Analyze the behavior of concrete under different loading conditions.",
-    "CO3": "Design concrete mixes based on IS codes.",
-    "CO4": "Evaluate durability and sustainability of concrete structures.",
-}
+# Function to generate questions
+def generate_questions(content, co_text, bloom_level):
+    prompt = f"""
+You are a Question Generator Agent.
 
-# Bloom's Taxonomy Levels
-blooms_levels = [
-    "Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"
-]
+Given the following:
+- Course Content: {content}
+- Course Outcome: {co_text}
+- Bloom's Taxonomy Level: {bloom_level}
 
-# Streamlit App
-st.set_page_config(page_title="LMS Question Generator", layout="wide")
-st.title("🎯 LMS Question Generator (CO + Bloom's Taxonomy)")
+Generate:
+- 2 Objective Type Questions
+- 2 Short Answer Type Questions
+that map to the given Course Outcome and Bloom's Taxonomy level.
 
-if st.button("🚀 Generate Questions"):
-    with st.spinner("Generating questions... please wait..."):
-        model = genai.GenerativeModel('gemini-pro')  # using correct Gemini model
-        
-        for co_key, co_description in course_outcomes.items():
-            st.header(f"📘 Course Outcome: {co_key} - {co_description}")
-            
-            for bloom_level in blooms_levels:
-                prompt = f"""
-You are a professional exam question designer.
+Format:
+Objective Questions:
+1. ...
+2. ...
 
-Given:
-
-- **Course Outcome**: {co_key} - {co_description}
-- **Bloom's Taxonomy Level**: {bloom_level}
-- **Course Content**: {transcript}
-
-Please generate:
-1. 🔹 2 Objective Type Questions (MCQ or Fill in the blanks)
-2. 🔹 2 Short Answer Type Questions
-
-Ensure that questions align strictly with the given Course Outcome and Bloom's level.
-Show the output in clean numbered format.
+Short Answer Questions:
+1. ...
+2. ...
 """
+    model = genai.GenerativeModel('gemini-1.5-pro')  # Correct model
+    response = model.generate_content(prompt)
+    return response.text
 
-                response = model.generate_content(prompt)
-                generated_text = response.text
+# Streamlit UI
+def main():
+    st.title("🌟 Course Outcome + Bloom's Taxonomy Question Generator")
 
-                st.subheader(f"🧠 Bloom's Level: {bloom_level}")
-                st.markdown(generated_text)
+    # Load Transcript and Course Outcomes
+    transcript = load_file("cleaned_transcript.txt")
+    course_outcomes = load_file("course_outcome.txt")
+
+    if st.button("Generate Questions"):
+        all_questions = ""
+        co_list = course_outcomes.strip().split("\n")  # Separate each CO
+        bloom_levels = ["Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"]
+
+        for co in co_list:
+            st.subheader(f"📚 {co}")
+            all_questions += f"\n\n## {co}\n\n"
+            for bloom in bloom_levels:
+                st.markdown(f"### 🌟 Bloom Level: {bloom}")
+                with st.spinner(f"Generating questions for {co} at {bloom} level..."):
+                    questions = generate_questions(transcript, co, bloom)
+                    st.write(questions)
+                    all_questions += f"\n\n### {bloom}\n{questions}\n"
+
+        # Option to download all generated questions
+        st.download_button("📄 Download All Questions", all_questions, file_name="generated_questions.txt")
+
+if __name__ == "__main__":
+    main()
