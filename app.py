@@ -6,9 +6,10 @@ import google.generativeai as genai
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 genai.configure(api_key=GOOGLE_API_KEY)
 
-# Function to load text file content
-def load_file_from_streamlit(uploaded_file):
-    return uploaded_file.read().decode("utf-8")
+# Function to load text files
+def load_file(file_path):
+    with open(file_path, "r", encoding="utf-8") as file:
+        return file.read()
 
 # Function to generate questions
 def generate_questions(content, co_text, bloom_level):
@@ -34,7 +35,7 @@ Short Answer Questions:
 1. ...
 2. ...
 """
-    model = genai.GenerativeModel('gemini-1.5-pro')  # Correct model
+    model = genai.GenerativeModel('gemini-1.5-pro')  # Correct Gemini model
     response = model.generate_content(prompt)
     return response.text
 
@@ -42,34 +43,27 @@ Short Answer Questions:
 def main():
     st.title("🌟 Course Outcome + Bloom's Taxonomy Question Generator")
 
-    # Upload files
-    uploaded_transcript = st.file_uploader("📄 Upload the Course Transcript (.txt)", type=["txt"])
-    uploaded_course_outcome = st.file_uploader("📄 Upload the Course Outcomes (.txt)", type=["txt"])
+    # Load the fixed transcript and course outcome files
+    transcript = load_file("cleaned_transcript.txt")
+    course_outcomes = load_file("course_outcome.txt")
 
-    if uploaded_transcript and uploaded_course_outcome:
-        transcript = load_file_from_streamlit(uploaded_transcript)
-        course_outcomes = load_file_from_streamlit(uploaded_course_outcome)
+    if st.button("🚀 Generate Questions"):
+        all_questions = ""
+        co_list = course_outcomes.strip().split("\n")  # List of each CO
+        bloom_levels = ["Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"]
 
-        if st.button("🚀 Generate Questions"):
-            all_questions = ""
-            co_list = course_outcomes.strip().split("\n")  # List of each CO
-            bloom_levels = ["Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"]
+        for co in co_list:
+            st.subheader(f"📚 {co}")
+            all_questions += f"\n\n## {co}\n\n"
+            for bloom in bloom_levels:
+                st.markdown(f"### 🌟 Bloom Level: {bloom}")
+                with st.spinner(f"Generating questions for {co} at {bloom} level..."):
+                    questions = generate_questions(transcript, co, bloom)
+                    st.write(questions)
+                    all_questions += f"\n\n### {bloom}\n{questions}\n"
 
-            for co in co_list:
-                st.subheader(f"📚 {co}")
-                all_questions += f"\n\n## {co}\n\n"
-                for bloom in bloom_levels:
-                    st.markdown(f"### 🌟 Bloom Level: {bloom}")
-                    with st.spinner(f"Generating questions for {co} at {bloom} level..."):
-                        questions = generate_questions(transcript, co, bloom)
-                        st.write(questions)
-                        all_questions += f"\n\n### {bloom}\n{questions}\n"
-
-            # Download all generated questions
-            st.download_button("📥 Download All Questions", all_questions, file_name="generated_questions.txt")
-
-    else:
-        st.warning("⚠️ Please upload both the Course Transcript and Course Outcomes files!")
+        # Option to download all generated questions
+        st.download_button("📥 Download All Questions", all_questions, file_name="generated_questions.txt")
 
 if __name__ == "__main__":
     main()
