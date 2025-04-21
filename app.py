@@ -2,7 +2,7 @@ import os
 import streamlit as st
 import google.generativeai as genai
 
-# Load Gemini API Key from Hugging Face Secret Variables
+# Load Gemini API Key
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 genai.configure(api_key=GOOGLE_API_KEY)
 
@@ -11,59 +11,47 @@ def load_file(file_path):
     with open(file_path, "r", encoding="utf-8") as file:
         return file.read()
 
-# Function to generate questions
+# Function to generate a single set of questions
 def generate_questions(content, co_text, bloom_level):
     prompt = f"""
 You are a Question Generator Agent.
-
 Given the following:
 - Course Content: {content}
 - Course Outcome: {co_text}
 - Bloom's Taxonomy Level: {bloom_level}
-
 Generate:
-- 2 Objective Type Questions
-- 2 Short Answer Type Questions
+- 1 Objective Type Question
+- 1 Short Answer Type Question
 that map to the given Course Outcome and Bloom's Taxonomy level.
-
 Format:
-Objective Questions:
+Objective Question:
 1. ...
-2. ...
-
-Short Answer Questions:
+Short Answer Question:
 1. ...
-2. ...
 """
-    model = genai.GenerativeModel('gemini-1.5-pro')  # Correct Gemini model
+    model = genai.GenerativeModel('gemini-1.5-pro')
     response = model.generate_content(prompt)
     return response.text
 
 # Streamlit UI
 def main():
-    st.title("🌟 Course Outcome + Bloom's Taxonomy Question Generator")
+    st.title("🎯 Single Question Generator based on CO + Bloom's Level")
 
-    # Load the fixed transcript and course outcome files
+    # Load course content and course outcomes
     transcript = load_file("cleaned_transcript.txt")
     course_outcomes = load_file("course_outcomes.txt")
+    co_list = course_outcomes.strip().split("\n")  # List of each CO
+    bloom_levels = ["Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"]
 
-    if st.button("🚀 Generate Questions"):
-        all_questions = ""
-        co_list = course_outcomes.strip().split("\n")  # List of each CO
-        bloom_levels = ["Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"]
+    # Dropdowns for user selection
+    selected_co = st.selectbox("📚 Select Course Outcome:", co_list)
+    selected_bloom = st.selectbox("🧠 Select Bloom's Level:", bloom_levels)
 
-        for co in co_list:
-            st.subheader(f"📚 {co}")
-            all_questions += f"\n\n## {co}\n\n"
-            for bloom in bloom_levels:
-                st.markdown(f"### 🌟 Bloom Level: {bloom}")
-                with st.spinner(f"Generating questions for {co} at {bloom} level..."):
-                    questions = generate_questions(transcript, co, bloom)
-                    st.write(questions)
-                    all_questions += f"\n\n### {bloom}\n{questions}\n"
-
-        # Option to download all generated questions
-        st.download_button("📥 Download All Questions", all_questions, file_name="generated_questions.txt")
+    if st.button("🚀 Generate Question"):
+        with st.spinner(f"Generating question for '{selected_co}' at '{selected_bloom}' level..."):
+            questions = generate_questions(transcript, selected_co, selected_bloom)
+            st.subheader("Generated Questions:")
+            st.write(questions)
 
 if __name__ == "__main__":
     main()
