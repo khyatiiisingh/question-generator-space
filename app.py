@@ -35,7 +35,7 @@ Short Answer Question:
 
 # Streamlit UI
 def main():
-    st.title("🎯 Single Question Generator based on CO + Bloom's Level")
+    st.title("Question Generator based on CO + Bloom's Level")
 
     # Load course content and course outcomes
     transcript = load_file("cleaned_transcript.txt")
