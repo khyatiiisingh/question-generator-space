@@ -11,5 +11,3 @@ sentence-transformers
 langchain
 streamlit
 google-generativeai
-streamlit>=1.35.0
-openai>=1.14.2
