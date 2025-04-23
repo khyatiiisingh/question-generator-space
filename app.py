@@ -1,11 +1,13 @@
 import os
 import streamlit as st
-import openai
+from openai import OpenAI
 
 # Load Llama API Key
 LLAMA_API_KEY = os.getenv("LLAMA_API_KEY")  # Set this in your Hugging Face Space
-openai.api_key = LLAMA_API_KEY
-openai.api_base = "https://api.llama-api.com/v1"  # Change if your provider gives different base URL
+client = OpenAI(
+    api_key=LLAMA_API_KEY,
+    base_url="https://api.llama-api.com/v1"  # Change if needed
+)
 
 # Function to load text files
 def load_file(file_path):
@@ -30,8 +32,8 @@ Objective Question:
 Short Answer Question:
 1. ...
 """
-    response = openai.ChatCompletion.create(
-        model="llama-3-70b-instruct",  # Or use whatever model your API supports
+    response = client.chat.completions.create(
+        model="llama-3-70b-instruct",  # Change model if needed
         messages=[
             {"role": "system", "content": "You are an expert Question Generator."},
             {"role": "user", "content": prompt}
@@ -39,7 +41,7 @@ Short Answer Question:
         temperature=0.7,
         max_tokens=800,
     )
-    return response['choices'][0]['message']['content']
+    return response.choices[0].message.content
 
 # Streamlit App
 def main():
