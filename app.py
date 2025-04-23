@@ -1,10 +1,13 @@
 import os
 import streamlit as st
-import google.generativeai as genai
+from openai import OpenAI
 
-# Load Gemini API Key
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-genai.configure(api_key=GOOGLE_API_KEY)
+# Load Llama API Key
+LLAMA_API_KEY = os.getenv("LLAMA_API_KEY")  # Set this in your Hugging Face Space
+client = OpenAI(
+    api_key=LLAMA_API_KEY,
+    base_url="https://api.llama-api.com/v1"  # Change if needed
+)
 
 # Function to load text files
 def load_file(file_path):
@@ -29,13 +32,20 @@ Objective Question:
 Short Answer Question:
 1. ...
 """
-    model = genai.GenerativeModel('gemini-1.5-pro')
-    response = model.generate_content(prompt)
-    return response.text
+    response = client.chat.completions.create(
+        model="llama-3-70b-instruct",  # Change model if needed
+        messages=[
+            {"role": "system", "content": "You are an expert Question Generator."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.7,
+        max_tokens=800,
+    )
+    return response.choices[0].message.content
 
 # Streamlit App
 def main():
-    st.title("🎯 Smart Question Generator (Direct from Transcript)")
+    st.title("🎯 Smart Question Generator (Llama API Version)")
 
     # Load course content and course outcomes
     transcript = load_file("cleaned_transcript.txt")
