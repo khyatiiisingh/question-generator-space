@@ -1,64 +1,71 @@
 import os
 import streamlit as st
+import faiss
+import numpy as np
+from sentence_transformers import SentenceTransformer
 import google.generativeai as genai
 
 # Load Gemini API Key
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 genai.configure(api_key=GOOGLE_API_KEY)
 
-# Function to load text file
+# Load sentence transformer model
+embed_model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# Load Files
 def load_file(file_path):
     with open(file_path, "r", encoding="utf-8") as file:
         return file.read()
 
-# Function to split large text into chunks
-def split_text(text, max_words=500):
-    words = text.split()
-    chunks = [' '.join(words[i:i+max_words]) for i in range(0, len(words), max_words)]
+# Chunking the transcript
+def chunk_text(text, chunk_size=500):
+    sentences = text.split('. ')
+    chunks = []
+    current_chunk = ""
+
+    for sentence in sentences:
+        if len(current_chunk) + len(sentence) <= chunk_size:
+            current_chunk += sentence + ". "
+        else:
+            chunks.append(current_chunk.strip())
+            current_chunk = sentence + ". "
+
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+    
     return chunks
 
-# Function to summarize each chunk
-def summarize_chunk(chunk):
-    summarization_prompt = f"""
-Summarize the following course content chunk in 50-70 words:
+# Build Vector Index
+def build_vector_index(chunks):
+    embeddings = embed_model.encode(chunks)
+    dimension = embeddings.shape[1]
 
-Chunk:
-{chunk}
+    index = faiss.IndexFlatL2(dimension)
+    index.add(np.array(embeddings))
 
-Summary:
-"""
-    model = genai.GenerativeModel('gemini-1.5-pro')
-    response = model.generate_content(summarization_prompt)
-    return response.text
+    return index, chunks, embeddings
 
-# Function to create full course summary
-def create_summary(full_text):
-    chunks = split_text(full_text, max_words=500)
-    full_summary = ""
+# Semantic search
+def semantic_search(co_text, index, chunks, embeddings, top_k=1):
+    co_embedding = embed_model.encode([co_text])
+    distances, indices = index.search(np.array(co_embedding), top_k)
+    retrieved_chunks = [chunks[i] for i in indices[0]]
+    return retrieved_chunks
 
-    model = genai.GenerativeModel('gemini-1.5-pro')
-
-    for i, chunk in enumerate(chunks):
-        with st.spinner(f"Summarizing chunk {i+1}/{len(chunks)}..."):
-            summary = summarize_chunk(chunk)
-            full_summary += summary + " "
-    
-    return full_summary
-
-# Function to generate question
-def generate_questions(summary, co_text, bloom_level):
+# Question Generation
+def generate_questions(retrieved_content, co_text, bloom_level):
     prompt = f"""
 You are a Question Generator Agent.
 
 Given:
-- Summary of Course Content: {summary}
+- Content Chunk: {retrieved_content}
 - Course Outcome (CO): {co_text}
 - Bloom's Taxonomy Level: {bloom_level}
 
 Generate:
 - 1 Objective Type Question
 - 1 Short Answer Type Question
-that map properly to the given CO and Bloom's Level.
+based only on the given content.
 
 Format:
 Objective Question:
@@ -73,33 +80,40 @@ Short Answer Question:
 
 # Streamlit App
 def main():
-    st.title("🎯 Smart Question Generator (Chunk-based Summarization)")
+    st.title(" CO & Bloom Level Based Question Generator")
 
-    # Load course content and COs
+    # Load course content and course outcomes
     transcript = load_file("cleaned_transcript.txt")
     course_outcomes = load_file("course_outcomes.txt")
     co_list = course_outcomes.strip().split("\n")
     bloom_levels = ["Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"]
 
-    # Summarize course content (smaller chunks)
-    if st.button("🔎 Summarize Course Content"):
-        course_summary = create_summary(transcript)
-        st.session_state['course_summary'] = course_summary
-        st.success("✅ Course summarized successfully!")
+    # Chunking and Building Index
+    st.info("Building vector database... please wait ⏳")
+    chunks = chunk_text(transcript)
+    index, chunks, embeddings = build_vector_index(chunks)
+    st.success("✅ Vector database built successfully!")
 
-    if 'course_summary' in st.session_state:
-        selected_co = st.selectbox("📚 Select Course Outcome:", co_list)
-        selected_bloom = st.selectbox("🧠 Select Bloom's Level:", bloom_levels)
+    # Select CO and Bloom Level
+    selected_co = st.selectbox("📚 Select Course Outcome:", co_list)
+    selected_bloom = st.selectbox("🧠 Select Bloom's Level:", bloom_levels)
 
-        if st.button("🚀 Generate Question"):
-            with st.spinner(f"Generating question for '{selected_co}' at '{selected_bloom}' level..."):
-                try:
-                    questions = generate_questions(st.session_state['course_summary'], selected_co, selected_bloom)
-                    st.subheader("Generated Questions:")
-                    st.write(questions)
-                    st.download_button("📥 Download Question", questions, file_name="generated_question.txt")
-                except Exception as e:
-                    st.error(f"❗ Error: {e}")
+    if st.button("🚀 Generate Question"):
+        with st.spinner("Fetching best matching content and generating question..."):
+            try:
+                # Semantic Search
+                best_chunk = semantic_search(selected_co, index, chunks, embeddings, top_k=1)[0]
+
+                # Generate Questions
+                questions = generate_questions(best_chunk, selected_co, selected_bloom)
+
+                st.subheader("Generated Questions:")
+                st.write(questions)
+
+                # Optional download
+                st.download_button("📥 Download Question", questions, file_name="generated_question.txt")
+            except Exception as e:
+                st.error(f"❗ Error: {e}")
 
 if __name__ == "__main__":
     main()
