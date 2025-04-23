@@ -1,10 +1,11 @@
 import os
 import streamlit as st
-import google.generativeai as genai
+import openai
 
-# Load Gemini API Key
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-genai.configure(api_key=GOOGLE_API_KEY)
+# Load Llama API Key
+LLAMA_API_KEY = os.getenv("LLAMA_API_KEY")  # Set this in your Hugging Face Space
+openai.api_key = LLAMA_API_KEY
+openai.api_base = "https://api.llama-api.com/v1"  # Change if your provider gives different base URL
 
 # Function to load text files
 def load_file(file_path):
@@ -29,13 +30,20 @@ Objective Question:
 Short Answer Question:
 1. ...
 """
-    model = genai.GenerativeModel('gemini-1.5-pro')
-    response = model.generate_content(prompt)
-    return response.text
+    response = openai.ChatCompletion.create(
+        model="llama-3-70b-instruct",  # Or use whatever model your API supports
+        messages=[
+            {"role": "system", "content": "You are an expert Question Generator."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.7,
+        max_tokens=800,
+    )
+    return response['choices'][0]['message']['content']
 
 # Streamlit App
 def main():
-    st.title("Question Generator")
+    st.title("🎯 Smart Question Generator (Llama API Version)")
 
     # Load course content and course outcomes
     transcript = load_file("cleaned_transcript.txt")
@@ -47,7 +55,7 @@ def main():
     selected_co = st.selectbox("📚 Select Course Outcome:", co_list)
     selected_bloom = st.selectbox("🧠 Select Bloom's Level:", bloom_levels)
 
-    if st.button(" Generate Question"):
+    if st.button("🚀 Generate Question"):
         with st.spinner(f"Generating question for '{selected_co}' at '{selected_bloom}' level..."):
             try:
                 questions = generate_questions(transcript, selected_co, selected_bloom)
