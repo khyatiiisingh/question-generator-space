@@ -45,21 +45,6 @@ def build_vector_index(chunks):
 
     return index, chunks, embeddings
 
-# Save index and embeddings
-def save_index(index, embeddings, chunks):
-    faiss.write_index(index, "faiss_index.idx")
-    np.save("embeddings.npy", embeddings)
-    with open("chunks.txt", "w", encoding="utf-8") as f:
-        f.write("\n".join(chunks))
-
-# Load index and embeddings
-def load_index():
-    index = faiss.read_index("faiss_index.idx")
-    embeddings = np.load("embeddings.npy")
-    with open("chunks.txt", "r", encoding="utf-8") as f:
-        chunks = f.read().splitlines()
-    return index, chunks, embeddings
-
 # Semantic search
 def semantic_search(co_text, index, chunks, embeddings, top_k=1):
     co_embedding = embed_model.encode([co_text])
@@ -71,17 +56,21 @@ def semantic_search(co_text, index, chunks, embeddings, top_k=1):
 def generate_questions(retrieved_content, co_text, bloom_level):
     prompt = f"""
 You are a Question Generator Agent.
+
 Given:
 - Content Chunk: {retrieved_content}
 - Course Outcome (CO): {co_text}
 - Bloom's Taxonomy Level: {bloom_level}
+
 Generate:
 - 1 Objective Type Question
 - 1 Short Answer Type Question
 based only on the given content.
+
 Format:
 Objective Question:
 1. ...
+
 Short Answer Question:
 1. ...
 """
@@ -91,7 +80,7 @@ Short Answer Question:
 
 # Streamlit App
 def main():
-    st.title(" CO & Bloom Level Based Question Generator")
+    st.title("🎯 Smart CO & Bloom Level Based Question Generator (Optimized)")
 
     # Load course content and course outcomes
     transcript = load_file("cleaned_transcript.txt")
@@ -99,19 +88,11 @@ def main():
     co_list = course_outcomes.strip().split("\n")
     bloom_levels = ["Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"]
 
-    # Persistent Index Loading
-    @st.cache_resource(show_spinner=False)
-    def get_index_and_chunks():
-        if os.path.exists("faiss_index.idx"):
-            return load_index()
-        else:
-            chunks = chunk_text(transcript)
-            index, chunks, embeddings = build_vector_index(chunks)
-            save_index(index, embeddings, chunks)
-            return index, chunks, embeddings
-
-    index, chunks, embeddings = get_index_and_chunks()
-    st.success("✅ Vector database ready!")
+    # Chunking and Building Index
+    st.info("Building vector database... please wait ⏳")
+    chunks = chunk_text(transcript)
+    index, chunks, embeddings = build_vector_index(chunks)
+    st.success("✅ Vector database built successfully!")
 
     # Select CO and Bloom Level
     selected_co = st.selectbox("📚 Select Course Outcome:", co_list)
