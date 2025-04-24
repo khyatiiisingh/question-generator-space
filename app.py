@@ -35,6 +35,20 @@ def chunk_text(text, chunk_size=500):
     
     return chunks
 
+# Save and Load vector index
+def save_vector_data(index, chunks, embeddings):
+    faiss.write_index(index, "faiss_index.index")
+    np.save("chunks.npy", np.array(chunks))
+    np.save("embeddings.npy", embeddings)
+
+def load_vector_data():
+    if os.path.exists("faiss_index.index") and os.path.exists("chunks.npy") and os.path.exists("embeddings.npy"):
+        index = faiss.read_index("faiss_index.index")
+        chunks = np.load("chunks.npy", allow_pickle=True).tolist()
+        embeddings = np.load("embeddings.npy")
+        return index, chunks, embeddings
+    return None, None, None
+
 # Build Vector Index
 def build_vector_index(chunks):
     embeddings = embed_model.encode(chunks)
@@ -52,35 +66,31 @@ def semantic_search(co_text, index, chunks, embeddings, top_k=1):
     retrieved_chunks = [chunks[i] for i in indices[0]]
     return retrieved_chunks
 
-# Question Generation
+# Question Generation with Chain of Thought
 def generate_questions(retrieved_content, co_text, bloom_level):
     prompt = f"""
 You are a Question Generator Agent.
-
-Given:
-- Content Chunk: {retrieved_content}
-- Course Outcome (CO): {co_text}
-- Bloom's Taxonomy Level: {bloom_level}
-
-Generate:
-- 1 Objective Type Question
-- 1 Short Answer Type Question
-based only on the given content.
+Step 1: Read the content chunk.
+Step 2: Identify the core concept matching Course Outcome: "{co_text}".
+Step 3: Generate two questions that reflect Bloom's Level: "{bloom_level}".
+Content:
+"""
+    # Add the chunk separately to avoid token overflow in prompt string
+    full_prompt = prompt + retrieved_content + """
 
 Format:
 Objective Question:
 1. ...
-
 Short Answer Question:
 1. ...
 """
     model = genai.GenerativeModel('gemini-1.5-pro')
-    response = model.generate_content(prompt)
+    response = model.generate_content(full_prompt)
     return response.text
 
 # Streamlit App
 def main():
-    st.title("🎯 Smart CO & Bloom Level Based Question Generator (Optimized)")
+    st.title(" CO & Bloom Level Based Question Generator (Optimized)")
 
     # Load course content and course outcomes
     transcript = load_file("cleaned_transcript.txt")
@@ -88,11 +98,16 @@ def main():
     co_list = course_outcomes.strip().split("\n")
     bloom_levels = ["Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"]
 
-    # Chunking and Building Index
-    st.info("Building vector database... please wait ⏳")
-    chunks = chunk_text(transcript)
-    index, chunks, embeddings = build_vector_index(chunks)
-    st.success("✅ Vector database built successfully!")
+    # Load or build vector DB
+    index, chunks, embeddings = load_vector_data()
+    if index is None:
+        st.info("Building vector database... please wait ⏳")
+        chunks = chunk_text(transcript)
+        index, chunks, embeddings = build_vector_index(chunks)
+        save_vector_data(index, chunks, embeddings)
+        st.success("✅ Vector database built and cached!")
+    else:
+        st.success("✅ Loaded cached vector database!")
 
     # Select CO and Bloom Level
     selected_co = st.selectbox("📚 Select Course Outcome:", co_list)
