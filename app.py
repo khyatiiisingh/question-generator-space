@@ -12,12 +12,12 @@ genai.configure(api_key=GOOGLE_API_KEY)
 # Load sentence transformer model
 embed_model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Load text files
+# Load Files
 def load_file(file_path):
     with open(file_path, "r", encoding="utf-8") as file:
         return file.read()
 
-# Chunking logic
+# Chunking the transcript
 def chunk_text(text, chunk_size=500):
     sentences = text.split('. ')
     chunks = []
@@ -29,8 +29,10 @@ def chunk_text(text, chunk_size=500):
         else:
             chunks.append(current_chunk.strip())
             current_chunk = sentence + ". "
+
     if current_chunk:
         chunks.append(current_chunk.strip())
+    
     return chunks
 
 # Save and Load vector index
@@ -62,7 +64,7 @@ def semantic_search(co_text, index, chunks, embeddings, top_k=1):
     retrieved_chunks = [chunks[i] for i in indices[0]]
     return retrieved_chunks
 
-# Chain of Thought + Clean Question Output
+# Question Generation with Chain of Thought and Clean Output
 def generate_questions(retrieved_content, co_text, bloom_level):
     prompt_parts = [
         "You are a Question Generator Agent.",
@@ -76,7 +78,9 @@ def generate_questions(retrieved_content, co_text, bloom_level):
         "Objective Question:\n1. <question>",
         "Short Answer Question:\n1. <question>"
     ]
+
     full_prompt = "\n".join(prompt_parts)
+
     model = genai.GenerativeModel('gemini-1.5-pro')
     response = model.generate_content(full_prompt)
 
@@ -88,28 +92,19 @@ def generate_questions(retrieved_content, co_text, bloom_level):
 
 # Streamlit App
 def main():
-    st.title("CO & Bloom Level Based Question Generator (with Handout Support)")
+    st.title("Course Outcome & Bloom's Level Based Question Generator")
 
-    # Load base files
+    # Load course content and course outcomes
     transcript = load_file("cleaned_transcript.txt")
     course_outcomes = load_file("course_outcomes.txt")
     co_list = course_outcomes.strip().split("\n")
     bloom_levels = ["Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"]
 
-    # Upload course handout file
-    handout_file = st.file_uploader("Upload Course Handout (txt)", type=["txt"])
-    handout_content = ""
-    if handout_file is not None:
-        handout_content = handout_file.read().decode("utf-8")
-
-    # Combine handout + transcript
-    combined_text = transcript + "\n" + handout_content if handout_content else transcript
-
     # Load or build vector DB
     index, chunks, embeddings = load_vector_data()
     if index is None:
         st.info("Building vector database... please wait")
-        chunks = chunk_text(combined_text)
+        chunks = chunk_text(transcript)
         index, chunks, embeddings = build_vector_index(chunks)
         save_vector_data(index, chunks, embeddings)
         st.success("Vector database built and cached")
@@ -125,8 +120,10 @@ def main():
             try:
                 best_chunk = semantic_search(selected_co, index, chunks, embeddings, top_k=1)[0]
                 questions = generate_questions(best_chunk, selected_co, selected_bloom)
+
                 st.subheader("Generated Questions")
                 st.write(questions)
+
                 st.download_button("Download Question", questions, file_name="generated_question.txt")
             except Exception as e:
                 st.error(f"Error: {e}")
