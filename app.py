@@ -4,9 +4,18 @@ import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import google.generativeai as genai
+from dotenv import load_dotenv  # NEW IMPORT
+
+# Load environment variables from .env
+load_dotenv()
 
 # Load Gemini API Key
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+
+if not GOOGLE_API_KEY:
+    st.error("Google API Key not found. Please check your .env file.")
+    st.stop()
+
 genai.configure(api_key=GOOGLE_API_KEY)
 
 # Load sentence transformer model
@@ -130,3 +139,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
