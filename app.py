@@ -2,9 +2,10 @@ import os
 import streamlit as st
 import faiss
 import numpy as np
+import json
 from sentence_transformers import SentenceTransformer
 import google.generativeai as genai
-from dotenv import load_dotenv  # NEW IMPORT
+from dotenv import load_dotenv
 
 # Load environment variables from .env
 load_dotenv()
@@ -73,7 +74,7 @@ def semantic_search(co_text, index, chunks, embeddings, top_k=1):
     retrieved_chunks = [chunks[i] for i in indices[0]]
     return retrieved_chunks
 
-# Question Generation with Chain of Thought and Clean Output
+# Question Generation
 def generate_questions(retrieved_content, co_text, bloom_level):
     prompt_parts = [
         "You are a Question Generator Agent.",
@@ -98,6 +99,37 @@ def generate_questions(retrieved_content, co_text, bloom_level):
         output = output.split("Objective Question", 1)[1]
         output = "Objective Question" + output.strip()
     return output
+
+# Save generated questions to JSON
+def save_to_json(selected_co, selected_bloom, questions, json_file="generated_questions.json"):
+    # Extract Objective and Short Answer parts
+    objective_q = ""
+    short_answer_q = ""
+
+    if "Short Answer Question:" in questions:
+        parts = questions.split("Short Answer Question:")
+        objective_q = parts[0].replace("Objective Question:", "").strip()
+        short_answer_q = parts[1].strip()
+
+    new_entry = {
+        "course_outcome": selected_co,
+        "bloom_level": selected_bloom,
+        "objective_question": objective_q,
+        "short_answer_question": short_answer_q
+    }
+
+    # Load existing data if exists
+    if os.path.exists(json_file):
+        with open(json_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    else:
+        data = []
+
+    data.append(new_entry)
+
+    # Save back to JSON
+    with open(json_file, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
 
 # Streamlit App
 def main():
@@ -133,10 +165,32 @@ def main():
                 st.subheader("Generated Questions")
                 st.write(questions)
 
-                st.download_button("Download Question", questions, file_name="generated_question.txt")
+                # Save to JSON
+                save_to_json(selected_co, selected_bloom, questions)
+
+                st.success("Question saved to generated_questions.json")
+
+                # Download buttons
+                st.download_button(
+                    "Download Latest Question (Text)",
+                    questions,
+                    file_name="latest_generated_question.txt"
+                )
+
+                # Option to download full JSON
+                with open("generated_questions.json", "r", encoding="utf-8") as f:
+                    st.download_button(
+                        "Download Full Questions (JSON)",
+                        f,
+                        file_name="generated_questions.json",
+                        mime="application/json"
+                    )
+
             except Exception as e:
                 st.error(f"Error: {e}")
 
 if __name__ == "__main__":
     main()
+
+
 
