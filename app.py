@@ -1,4 +1,4 @@
-# === FILE: app.py (Final – No Warnings, No Torch Error) ===
+# === FILE: app.py (Cleaned – No Test Mode / No Quota Logic) ===
 
 import os
 import time
@@ -14,12 +14,10 @@ import pandas as pd
 from datetime import datetime
 import re
 import warnings
-
-# === Suppress LangChain Deprecation Warnings ===
-warnings.filterwarnings("ignore", category=UserWarning, module="langchain")
-
-# === Suppress PyTorch file watcher error ===
 import logging
+
+# === Suppress Warnings ===
+warnings.filterwarnings("ignore", category=UserWarning, module="langchain")
 logging.getLogger("streamlit.runtime.scriptrunner.script_runner").setLevel(logging.ERROR)
 logging.getLogger("streamlit.watcher.local_sources_watcher").setLevel(logging.ERROR)
 
