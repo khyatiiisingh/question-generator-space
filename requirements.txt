@@ -6,7 +6,6 @@ langchain-google-genai
 langchain-community
 faiss-cpu
 sentence-transformers
-streamlit
-google-generativeai
 tqdm
 numpy
+tenacity
