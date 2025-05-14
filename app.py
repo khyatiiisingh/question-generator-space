@@ -1,4 +1,4 @@
-# === FILE: app.py (Updated: Topic Dropdown from Transcript) ===
+# === FILE: app.py (Final – No Warnings, No Torch Error) ===
 
 import os
 import time
@@ -13,6 +13,15 @@ from langchain.prompts import PromptTemplate
 import pandas as pd
 from datetime import datetime
 import re
+import warnings
+
+# === Suppress LangChain Deprecation Warnings ===
+warnings.filterwarnings("ignore", category=UserWarning, module="langchain")
+
+# === Suppress PyTorch file watcher error ===
+import logging
+logging.getLogger("streamlit.runtime.scriptrunner.script_runner").setLevel(logging.ERROR)
+logging.getLogger("streamlit.watcher.local_sources_watcher").setLevel(logging.ERROR)
 
 # === Load API key ===
 load_dotenv()
