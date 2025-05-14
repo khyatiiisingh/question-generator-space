@@ -1,96 +1,96 @@
-# === Dhamm AI: CO-PO Mapped Question Generator ===
+# === FILE: app.py ===
 
 import os
+import time
 import streamlit as st
 from dotenv import load_dotenv
+from langchain.vectorstores import FAISS
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_community.document_loaders import TextLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.chains import LLMChain
+from langchain.prompts import PromptTemplate
 from tenacity import retry, wait_random_exponential, stop_after_attempt
-import pandas as pd
-import uuid
 
-# === Load environment variables ===
+# === Load API key ===
 load_dotenv()
 os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY")
 
-# === Initialize Gemini LLM ===
+# === Constants ===
+DATA_PATH = "cleaned_transcript.txt"
+CO_PATH = "course_outcomes.txt"
+
+# === Vector DB Setup ===
+@st.cache_resource(show_spinner=False)
+def load_vector_db():
+    loader = TextLoader(DATA_PATH)
+    data = loader.load()
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    chunks = text_splitter.split_documents(data)
+    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    vectordb = FAISS.from_documents(chunks, embeddings)
+    return vectordb
+
+vectordb = load_vector_db()
+st.success("✅ Loaded cached vector database")
+
+# === LLM Setup ===
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.7)
 
 @retry(wait=wait_random_exponential(min=1, max=10), stop=stop_after_attempt(3))
-def generate_question(prompt):
+def get_response(prompt):
     return llm.invoke(prompt)
 
-# === Load Course Outcomes and CO-PO Mapping ===
-def load_course_outcomes():
-    with open("course_outcomes.txt") as f:
-        return [line.strip() for line in f.readlines() if line.strip() and not line.startswith("Course Outcomes")]
+# === Prompt Template ===
+prompt_template = PromptTemplate(
+    input_variables=["context", "topic", "blooms", "co", "qtype", "marks", "assessment"],
+    template="""
+Based on the following course content:
+{context}
 
-def load_copo_mapping():
-    return {
-        "CO1": ["PO1", "PO2"],
-        "CO2": ["PO3"],
-        "CO3": ["PO2", "PO5"],
-        "CO4": ["PO4", "PO6"],
-        "CO5": ["PO3", "PO7"],
-        "CO6": ["PO8"]
-    }
+Generate a {qtype} question from the topic '{topic}' that matches:
+- Bloom's Taxonomy level: {blooms}
+- Course Outcome: {co}
+- Marks: {marks}
+- Assessment Type: {assessment} (e.g., IA1, IA2, Midterm, Endsem)
 
-# === Save Question to Local Bank ===
-def save_to_question_bank(data, file_path="question_bank.csv"):
-    df = pd.DataFrame([data])
-    if os.path.exists(file_path):
-        df.to_csv(file_path, mode='a', header=False, index=False)
-    else:
-        df.to_csv(file_path, index=False)
+Question:
+"""
+)
 
 # === Streamlit UI ===
-st.set_page_config(page_title="CO-PO Based Question Generator", layout="centered")
-st.title("📘 Based Question Generator")
+st.title("📘 Outcome-Based Question Generator")
 
-course_outcomes = load_course_outcomes()
-copo_map = load_copo_mapping()
-blooms_levels = ["Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"]
-question_types = ["MCQ", "Short Answer", "Long Answer"]
-assessment_types = ["IA1", "IA2", "Mid Term", "End Term", "Research Assessment"]
+# --- Load COs ---
+with open(CO_PATH) as f:
+    course_outcomes = [line.strip() for line in f if line.strip() and line[0].isdigit()]
 
-st.success("Loaded cached vector database")
-
-selected_co = st.selectbox("Select Course Outcome:", options=course_outcomes)
-selected_bloom = st.selectbox("Select Bloom's Level:", options=blooms_levels)
-selected_type = st.selectbox("Select Question Type:", options=question_types)
-selected_marks = st.slider("Select Marks:", 1, 20, 5)
-selected_assessment = st.selectbox("Select Assessment Type:", options=assessment_types)
-topic = st.text_input("Enter Topic Name:")
+topic = st.text_input("Enter Topic:")
+co_selected = st.selectbox("Select Course Outcome:", course_outcomes)
+bloom_level = st.selectbox("Select Bloom's Level:", ["Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"])
+qtype = st.selectbox("Select Question Type:", ["MCQ", "Short Answer", "Long Answer"])
+marks = st.selectbox("Marks: ", [1, 2, 5, 10])
+assessment = st.selectbox("Assessment Type:", ["IA1", "IA2", "Midterm", "Endsem", "Research"])
 
 if st.button("Generate Question"):
-    if not topic:
-        st.warning("Please enter a topic.")
+    if topic:
+        with st.spinner("Generating question..."):
+            context_docs = vectordb.similarity_search(topic, k=3)
+            context = "\n\n".join([doc.page_content for doc in context_docs])
+            prompt = prompt_template.format(
+                context=context,
+                topic=topic,
+                blooms=bloom_level,
+                co=co_selected,
+                qtype=qtype,
+                marks=marks,
+                assessment=assessment
+            )
+            try:
+                response = get_response(prompt)
+                st.text_area("Generated Question:", value=response.content.strip(), height=150)
+            except Exception as e:
+                st.error(f"❌ Failed to generate question: {e}")
     else:
-        po_list = copo_map.get(f"CO{course_outcomes.index(selected_co)+1}", [])
-        prompt = f"""
-        Generate a {selected_type} question from topic "{topic}".
-        - Bloom's Taxonomy Level: {selected_bloom}
-        - Target Course Outcome: {selected_co}
-        - Target Program Outcomes: {', '.join(po_list)}
-        - Marks: {selected_marks}
-        - Assessment Type: {selected_assessment}
-        Provide only the question text.
-        """
-        try:
-            question = generate_question(prompt)
-            st.success("Question Generated Successfully!")
-            st.markdown(f"**Q:** {question}")
-
-            save_to_question_bank({
-                "id": str(uuid.uuid4()),
-                "topic": topic,
-                "question": question,
-                "type": selected_type,
-                "bloom_level": selected_bloom,
-                "co": selected_co,
-                "po": ', '.join(po_list),
-                "marks": selected_marks,
-                "assessment_type": selected_assessment
-            })
-
-        except Exception as e:
-            st.error(f"❌ Error: {e}")
+        st.warning("Please enter a topic.")
