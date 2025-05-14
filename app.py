@@ -1,4 +1,4 @@
-# === FILE: app.py (Enhanced with CO → PO Mapping + Cache + Free Tier Optimization) ===
+# === FILE: app.py (Finalized for Google Gemini Free Tier with Smart Caching & Token Optimization) ===
 
 import os
 import time
@@ -23,7 +23,7 @@ DATA_PATH = "cleaned_transcript.txt"
 CO_PATH = "course_outcomes.txt"
 CACHE_PATH = "question_cache.csv"
 
-# === Sample Static CO → PO Mapping (can later load from JSON/CSV) ===
+# === Static CO → PO Mapping ===
 CO_PO_MAP = {
     "1. identify different types of concrete and its properties": ["PO1", "PO2"],
     "2. determine the workability of concrete": ["PO2", "PO4"],
@@ -45,17 +45,17 @@ def load_vector_db():
     return vectordb
 
 vectordb = load_vector_db()
-st.success("✅ VectorDB loaded")
+st.success("✅ VectorDB loaded (k=1 optimized)")
 
-# === LLM Setup ===
+# === Gemini Setup ===
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.7)
 
-@retry(wait=wait_random_exponential(min=1, max=10), stop=stop_after_attempt(3))
+@retry(wait=wait_random_exponential(min=2, max=10), stop=stop_after_attempt(3))
 def get_response(prompt):
-    time.sleep(4)  # manual throttle for Free Tier
+    time.sleep(4)  # throttle for Free Tier
     return llm.invoke(prompt)
 
-# === Prompt Template (Optimized) ===
+# === Optimized Prompt Template ===
 prompt_template = PromptTemplate(
     input_variables=["topic", "blooms", "co", "po", "qtype", "marks", "assessment"],
     template="""
@@ -63,15 +63,14 @@ Generate a {qtype} question from topic: {topic}
 Targeting:
 - Bloom Level: {blooms}
 - Course Outcome: {co}
-- Program Outcome(s): {po}
+- Program Outcomes: {po}
 - Marks: {marks}
 - Assessment Type: {assessment}
-
-Only provide the question. No explanation.
+Only provide the question.
 """
 )
 
-# === Load Cache ===
+# === Cache Handling ===
 def load_cache():
     if os.path.exists(CACHE_PATH):
         return pd.read_csv(CACHE_PATH)
@@ -89,7 +88,7 @@ def check_cache(df, topic, blooms, co, po, qtype, marks, assessment):
     return None
 
 # === Streamlit UI ===
-st.title("📘 CO-PO Mapped Question Generator (Free Tier Optimized)")
+st.title("📘 Gemini-Free CO-PO Based Question Generator")
 
 # --- Load COs ---
 with open(CO_PATH) as f:
@@ -102,7 +101,7 @@ qtype = st.selectbox("Select Question Type:", ["MCQ", "Short Answer", "Long Answ
 marks = st.selectbox("Marks: ", [1, 2, 5, 10])
 assessment = st.selectbox("Assessment Type:", ["IA1", "IA2", "Midterm", "Endsem", "Research"])
 
-# Auto-resolve PO from CO
+# Auto-map PO
 po_list = CO_PO_MAP.get(co_selected.strip(), [])
 po_display = ", ".join(po_list) if po_list else "Not mapped"
 st.markdown(f"**Mapped Program Outcomes:** {po_display}")
@@ -117,6 +116,9 @@ if st.button("Generate Question"):
                 st.info("💾 Loaded from cache")
                 st.text_area("Generated Question:", value=cached_question, height=150)
             else:
+                # Use only top 1 chunk to save tokens
+                context_docs = vectordb.similarity_search(topic, k=1)
+                context = "\n\n".join([doc.page_content for doc in context_docs])
                 prompt = prompt_template.format(
                     topic=topic,
                     blooms=bloom_level,
