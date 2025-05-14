@@ -1,4 +1,4 @@
-# === FILE: app.py (Updated for Paid Gemini API – No Quota Warnings) ===
+# === FILE: app.py (Updated: Topic Dropdown from Transcript) ===
 
 import os
 import time
@@ -12,6 +12,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import PromptTemplate
 import pandas as pd
 from datetime import datetime
+import re
 
 # === Load API key ===
 load_dotenv()
@@ -21,7 +22,6 @@ os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY")
 DATA_PATH = "cleaned_transcript.txt"
 CO_PATH = "course_outcomes.txt"
 CACHE_PATH = "question_cache.csv"
-USAGE_LOG_PATH = "daily_usage_log.csv"
 
 # === Static CO → PO Mapping ===
 CO_PO_MAP = {
@@ -33,7 +33,7 @@ CO_PO_MAP = {
     "6. select types of admixture and special concrete for given condition.": ["PO5", "PO7"]
 }
 
-# === Vector DB Setup ===
+# === Vector DB Setup + Topic Extractor ===
 @st.cache_resource(show_spinner=False)
 def load_vector_db():
     loader = TextLoader(DATA_PATH)
@@ -42,9 +42,23 @@ def load_vector_db():
     chunks = text_splitter.split_documents(data)
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
     vectordb = FAISS.from_documents(chunks, embeddings)
-    return vectordb
+    return vectordb, chunks
 
-vectordb = load_vector_db()
+vectordb, chunks = load_vector_db()
+
+@st.cache_data(show_spinner=False)
+def extract_topics(chunks):
+    topics = set()
+    for chunk in chunks:
+        lines = chunk.page_content.split("\n")
+        for line in lines:
+            line = line.strip()
+            if len(line) > 10 and not line.lower().startswith("course") and not line.lower().startswith("unit"):
+                if re.match(r'^[A-Z].*', line):
+                    topics.add(line)
+    return sorted(topics)
+
+extracted_topics = extract_topics(chunks)
 
 # === Gemini Setup ===
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.7)
@@ -91,16 +105,22 @@ st.title("📘 Gemini-Pro CO-PO Based Question Generator")
 with open(CO_PATH) as f:
     course_outcomes = [line.strip() for line in f if line.strip() and line[0].isdigit()]
 
-topic = st.text_input("Enter Topic:")
-co_selected = st.selectbox("Select Course Outcome:", course_outcomes)
-bloom_level = st.selectbox("Select Bloom's Level:", ["Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"])
-qtype = st.selectbox("Select Question Type:", ["MCQ", "Short Answer", "Long Answer"])
-marks = st.selectbox("Marks: ", [1, 2, 5, 10])
-assessment = st.selectbox("Assessment Type:", ["IA1", "IA2", "Midterm", "Endsem", "Research"])
+st.markdown("### Step 1: Select Topic")
+topic = st.selectbox("Select a topic:", options=extracted_topics)
 
+st.markdown("### Step 2: Select Course Outcome")
+co_selected = st.selectbox("Select Course Outcome:", course_outcomes)
 po_list = CO_PO_MAP.get(co_selected.strip(), [])
 po_display = ", ".join(po_list) if po_list else "Not mapped"
 st.markdown(f"**Mapped Program Outcomes:** {po_display}")
+
+st.markdown("### Step 3: Select Bloom Level + Question Type + Marks")
+bloom_level = st.selectbox("Select Bloom's Level:", ["Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"])
+qtype = st.selectbox("Select Question Type:", ["MCQ", "Short Answer", "Long Answer"])
+marks = st.selectbox("Marks: ", [1, 2, 5, 10])
+
+st.markdown("### Step 4: Select Assessment Type")
+assessment = st.selectbox("Assessment Type:", ["IA1", "IA2", "Midterm", "Endsem", "Research"])
 
 if st.button("Generate Question"):
     if topic:
@@ -132,4 +152,4 @@ if st.button("Generate Question"):
                 except Exception as e:
                     st.error(f"❌ Gemini error: {e}")
     else:
-        st.warning("Please enter a topic.")
+        st.warning("Please select a topic.")
