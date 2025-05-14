@@ -1,4 +1,4 @@
-# === FILE: app.py (With Daily Limit Tracker + Test Mode) ===
+# === FILE: app.py (Updated for Paid Gemini API – No Quota Warnings) ===
 
 import os
 import time
@@ -10,7 +10,6 @@ from langchain_community.document_loaders import TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import PromptTemplate
-from tenacity import retry, wait_random_exponential, stop_after_attempt
 import pandas as pd
 from datetime import datetime
 
@@ -50,9 +49,7 @@ vectordb = load_vector_db()
 # === Gemini Setup ===
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.7)
 
-@retry(wait=wait_random_exponential(min=2, max=10), stop=stop_after_attempt(3))
 def get_response(prompt):
-    time.sleep(4)
     return llm.invoke(prompt)
 
 # === Prompt Template ===
@@ -69,24 +66,6 @@ Targeting:
 Only provide the question.
 """
 )
-
-# === Usage Tracking ===
-def get_today_usage():
-    today = datetime.now().strftime("%Y-%m-%d")
-    if os.path.exists(USAGE_LOG_PATH):
-        df = pd.read_csv(USAGE_LOG_PATH)
-        count = len(df[df.date == today])
-        return count
-    return 0
-
-def log_usage():
-    today = datetime.now().strftime("%Y-%m-%d")
-    if os.path.exists(USAGE_LOG_PATH):
-        df = pd.read_csv(USAGE_LOG_PATH)
-    else:
-        df = pd.DataFrame(columns=["date"])
-    df = pd.concat([df, pd.DataFrame([[today]], columns=["date"])]).reset_index(drop=True)
-    df.to_csv(USAGE_LOG_PATH, index=False)
 
 # === Cache Handling ===
 def load_cache():
@@ -106,14 +85,7 @@ def check_cache(df, topic, blooms, co, po, qtype, marks, assessment):
     return None
 
 # === Streamlit UI ===
-st.title("📘 Gemini-Free CO-PO Based Question Generator")
-
-# Daily usage display
-daily_count = get_today_usage()
-st.markdown(f"🔁 **Today's Usage**: {daily_count}/60 prompts used")
-
-# Test mode
-test_mode = st.checkbox("🧪 Enable Test Mode (no API call)")
+st.title("📘 Gemini-Pro CO-PO Based Question Generator")
 
 # --- Load COs ---
 with open(CO_PATH) as f:
@@ -132,7 +104,7 @@ st.markdown(f"**Mapped Program Outcomes:** {po_display}")
 
 if st.button("Generate Question"):
     if topic:
-        with st.spinner("Checking cache and generating..."):
+        with st.spinner("Generating question..."):
             cache_df = load_cache()
             cached_question = check_cache(cache_df, topic, bloom_level, co_selected, po_display, qtype, str(marks), assessment)
 
@@ -150,13 +122,8 @@ if st.button("Generate Question"):
                     assessment=assessment
                 )
                 try:
-                    if test_mode:
-                        question = f"[TEST MODE] Simulated question for topic '{topic}' at Bloom Level '{bloom_level}'"
-                    else:
-                        response = get_response(prompt)
-                        question = response.content.strip()
-                        log_usage()  # log only if real request made
-
+                    response = get_response(prompt)
+                    question = response.content.strip()
                     st.text_area("Generated Question:", value=question, height=150)
                     new_row = pd.DataFrame([[topic, bloom_level, co_selected, po_display, qtype, marks, assessment, question]],
                                            columns=["topic", "blooms", "co", "po", "qtype", "marks", "assessment", "question"])
