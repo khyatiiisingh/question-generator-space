@@ -1,4 +1,4 @@
-# === FILE: app.py (Finalized for Google Gemini Free Tier with Smart Caching & Token Optimization) ===
+# === FILE: app.py (With Daily Limit Tracker + Test Mode) ===
 
 import os
 import time
@@ -9,10 +9,10 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.document_loaders import TextLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 import pandas as pd
+from datetime import datetime
 
 # === Load API key ===
 load_dotenv()
@@ -22,6 +22,7 @@ os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY")
 DATA_PATH = "cleaned_transcript.txt"
 CO_PATH = "course_outcomes.txt"
 CACHE_PATH = "question_cache.csv"
+USAGE_LOG_PATH = "daily_usage_log.csv"
 
 # === Static CO → PO Mapping ===
 CO_PO_MAP = {
@@ -45,17 +46,16 @@ def load_vector_db():
     return vectordb
 
 vectordb = load_vector_db()
-st.success("✅ VectorDB loaded (k=1 optimized)")
 
 # === Gemini Setup ===
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.7)
 
 @retry(wait=wait_random_exponential(min=2, max=10), stop=stop_after_attempt(3))
 def get_response(prompt):
-    time.sleep(4)  # throttle for Free Tier
+    time.sleep(4)
     return llm.invoke(prompt)
 
-# === Optimized Prompt Template ===
+# === Prompt Template ===
 prompt_template = PromptTemplate(
     input_variables=["topic", "blooms", "co", "po", "qtype", "marks", "assessment"],
     template="""
@@ -69,6 +69,24 @@ Targeting:
 Only provide the question.
 """
 )
+
+# === Usage Tracking ===
+def get_today_usage():
+    today = datetime.now().strftime("%Y-%m-%d")
+    if os.path.exists(USAGE_LOG_PATH):
+        df = pd.read_csv(USAGE_LOG_PATH)
+        count = len(df[df.date == today])
+        return count
+    return 0
+
+def log_usage():
+    today = datetime.now().strftime("%Y-%m-%d")
+    if os.path.exists(USAGE_LOG_PATH):
+        df = pd.read_csv(USAGE_LOG_PATH)
+    else:
+        df = pd.DataFrame(columns=["date"])
+    df = pd.concat([df, pd.DataFrame([[today]], columns=["date"])]).reset_index(drop=True)
+    df.to_csv(USAGE_LOG_PATH, index=False)
 
 # === Cache Handling ===
 def load_cache():
@@ -90,6 +108,13 @@ def check_cache(df, topic, blooms, co, po, qtype, marks, assessment):
 # === Streamlit UI ===
 st.title("📘 Gemini-Free CO-PO Based Question Generator")
 
+# Daily usage display
+daily_count = get_today_usage()
+st.markdown(f"🔁 **Today's Usage**: {daily_count}/60 prompts used")
+
+# Test mode
+test_mode = st.checkbox("🧪 Enable Test Mode (no API call)")
+
 # --- Load COs ---
 with open(CO_PATH) as f:
     course_outcomes = [line.strip() for line in f if line.strip() and line[0].isdigit()]
@@ -101,7 +126,6 @@ qtype = st.selectbox("Select Question Type:", ["MCQ", "Short Answer", "Long Answ
 marks = st.selectbox("Marks: ", [1, 2, 5, 10])
 assessment = st.selectbox("Assessment Type:", ["IA1", "IA2", "Midterm", "Endsem", "Research"])
 
-# Auto-map PO
 po_list = CO_PO_MAP.get(co_selected.strip(), [])
 po_display = ", ".join(po_list) if po_list else "Not mapped"
 st.markdown(f"**Mapped Program Outcomes:** {po_display}")
@@ -116,9 +140,6 @@ if st.button("Generate Question"):
                 st.info("💾 Loaded from cache")
                 st.text_area("Generated Question:", value=cached_question, height=150)
             else:
-                # Use only top 1 chunk to save tokens
-                context_docs = vectordb.similarity_search(topic, k=1)
-                context = "\n\n".join([doc.page_content for doc in context_docs])
                 prompt = prompt_template.format(
                     topic=topic,
                     blooms=bloom_level,
@@ -129,8 +150,13 @@ if st.button("Generate Question"):
                     assessment=assessment
                 )
                 try:
-                    response = get_response(prompt)
-                    question = response.content.strip()
+                    if test_mode:
+                        question = f"[TEST MODE] Simulated question for topic '{topic}' at Bloom Level '{bloom_level}'"
+                    else:
+                        response = get_response(prompt)
+                        question = response.content.strip()
+                        log_usage()  # log only if real request made
+
                     st.text_area("Generated Question:", value=question, height=150)
                     new_row = pd.DataFrame([[topic, bloom_level, co_selected, po_display, qtype, marks, assessment, question]],
                                            columns=["topic", "blooms", "co", "po", "qtype", "marks", "assessment", "question"])
