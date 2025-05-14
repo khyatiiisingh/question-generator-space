@@ -1,4 +1,4 @@
-# === FILE: app.py (Enhanced for Free Tier + Cache + Optimization) ===
+# === FILE: app.py (Enhanced with CO → PO Mapping + Cache + Free Tier Optimization) ===
 
 import os
 import time
@@ -22,6 +22,16 @@ os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY")
 DATA_PATH = "cleaned_transcript.txt"
 CO_PATH = "course_outcomes.txt"
 CACHE_PATH = "question_cache.csv"
+
+# === Sample Static CO → PO Mapping (can later load from JSON/CSV) ===
+CO_PO_MAP = {
+    "1. identify different types of concrete and its properties": ["PO1", "PO2"],
+    "2. determine the workability of concrete": ["PO2", "PO4"],
+    "3. determine strength and durability of concrete": ["PO3", "PO5"],
+    "4. design concrete mixes for the given conditions": ["PO3", "PO6"],
+    "5. perform tests of hardened concrete": ["PO4", "PO6"],
+    "6. select types of admixture and special concrete for given condition.": ["PO5", "PO7"]
+}
 
 # === Vector DB Setup ===
 @st.cache_resource(show_spinner=False)
@@ -47,12 +57,13 @@ def get_response(prompt):
 
 # === Prompt Template (Optimized) ===
 prompt_template = PromptTemplate(
-    input_variables=["topic", "blooms", "co", "qtype", "marks", "assessment"],
+    input_variables=["topic", "blooms", "co", "po", "qtype", "marks", "assessment"],
     template="""
 Generate a {qtype} question from topic: {topic}
 Targeting:
 - Bloom Level: {blooms}
 - Course Outcome: {co}
+- Program Outcome(s): {po}
 - Marks: {marks}
 - Assessment Type: {assessment}
 
@@ -65,20 +76,20 @@ def load_cache():
     if os.path.exists(CACHE_PATH):
         return pd.read_csv(CACHE_PATH)
     else:
-        return pd.DataFrame(columns=["topic", "blooms", "co", "qtype", "marks", "assessment", "question"])
+        return pd.DataFrame(columns=["topic", "blooms", "co", "po", "qtype", "marks", "assessment", "question"])
 
 def save_to_cache(df):
     df.to_csv(CACHE_PATH, index=False)
 
-def check_cache(df, topic, blooms, co, qtype, marks, assessment):
-    filtered = df[(df.topic == topic) & (df.blooms == blooms) & (df.co == co) &
+def check_cache(df, topic, blooms, co, po, qtype, marks, assessment):
+    filtered = df[(df.topic == topic) & (df.blooms == blooms) & (df.co == co) & (df.po == po) &
                   (df.qtype == qtype) & (df.marks == str(marks)) & (df.assessment == assessment)]
     if not filtered.empty:
         return filtered.iloc[0].question
     return None
 
 # === Streamlit UI ===
-st.title("📘 Free-Tier Optimized Question Generator")
+st.title("📘 CO-PO Mapped Question Generator (Free Tier Optimized)")
 
 # --- Load COs ---
 with open(CO_PATH) as f:
@@ -91,11 +102,16 @@ qtype = st.selectbox("Select Question Type:", ["MCQ", "Short Answer", "Long Answ
 marks = st.selectbox("Marks: ", [1, 2, 5, 10])
 assessment = st.selectbox("Assessment Type:", ["IA1", "IA2", "Midterm", "Endsem", "Research"])
 
+# Auto-resolve PO from CO
+po_list = CO_PO_MAP.get(co_selected.strip(), [])
+po_display = ", ".join(po_list) if po_list else "Not mapped"
+st.markdown(f"**Mapped Program Outcomes:** {po_display}")
+
 if st.button("Generate Question"):
     if topic:
         with st.spinner("Checking cache and generating..."):
             cache_df = load_cache()
-            cached_question = check_cache(cache_df, topic, bloom_level, co_selected, qtype, str(marks), assessment)
+            cached_question = check_cache(cache_df, topic, bloom_level, co_selected, po_display, qtype, str(marks), assessment)
 
             if cached_question:
                 st.info("💾 Loaded from cache")
@@ -105,6 +121,7 @@ if st.button("Generate Question"):
                     topic=topic,
                     blooms=bloom_level,
                     co=co_selected,
+                    po=po_display,
                     qtype=qtype,
                     marks=marks,
                     assessment=assessment
@@ -113,8 +130,8 @@ if st.button("Generate Question"):
                     response = get_response(prompt)
                     question = response.content.strip()
                     st.text_area("Generated Question:", value=question, height=150)
-                    new_row = pd.DataFrame([[topic, bloom_level, co_selected, qtype, marks, assessment, question]],
-                                           columns=["topic", "blooms", "co", "qtype", "marks", "assessment", "question"])
+                    new_row = pd.DataFrame([[topic, bloom_level, co_selected, po_display, qtype, marks, assessment, question]],
+                                           columns=["topic", "blooms", "co", "po", "qtype", "marks", "assessment", "question"])
                     cache_df = pd.concat([cache_df, new_row], ignore_index=True)
                     save_to_cache(cache_df)
                 except Exception as e:
